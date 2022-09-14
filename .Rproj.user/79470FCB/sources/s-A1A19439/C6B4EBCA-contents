@@ -1,0 +1,193 @@
+---
+title: "A new approach to extrapolation: blended survival curves  "
+author: "Zhaojing Che | Department of Statistical Science | University College London"
+#         | [zhaojing.che.19@ucl.ac.uk](mailto:zhaojing.che.19@ucl.ac.uk)
+# date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  bookdown::html_document2:
+  bookdown::word_document2:
+  bookdown::pdf_book:
+    keep_tex: yes
+#    reference_docx: BMJ.docx
+  pdf_document: default
+header-includes: \usepackage{bm}
+fig_caption: yes
+link-citations: yes
+bibliography: references.bib 
+---
+
+# Motivating case study  {-}
+
+Here is an example about the technical implementation (including relevant `R` code) of the blended model. Firstly, the “blending” idea is to consider two separate processes to describe the long-term
+horizon survival; one is to use a flexible model (e.g. Cox semi-parametric) to fit as well as possible the observed data, and the other is a parametric model encoding assumptions on the expected behaviour of underlying long-term survival. Then importantly, the two are “blended” into a single survival curve that is identical with the flexible model over the range of observed times and increasingly similar to the parametric model over the extrapolation period.  
+
+## Install and load required R packages {-}
+
+We will use two R packages:
+
+- `INLA`    for computing observed survival estimates based on internal data 
+- `survHE`  for computing external survival estimates with expert judgement
+
+Install the packages
+```{r install pacakges, eval=FALSE}
+# For Windows:
+install.packages("survHE",
+	               repos=c("http://www.statistica.it/gianluca/R",
+		                     "https://cran.rstudio.org",
+                         "https://inla.r-inla-download.org/R/stable"),
+	               dependencies=TRUE)
+
+install.packages("INLA",
+                 repos=c(getOption("repos"),
+                         INLA="https://inla.r-inla-download.org/R/stable"),
+                 dep=TRUE)
+```
+
+Load the packages
+```{r load packages, results='hide', warning=FALSE, message=FALSE}
+library(survHE)
+library(INLA)
+```
+
+## Example dataset (TA174)    {-}
+We will use CLL-8 trial data in NICE technology appraisal TA174, which compares rituximab in combination with fludarabine and cyclophosphamide
+(FCR) to fludarabine and cyclophosphamide (FC) for the first-line treatment of chronic lymphocytic leukemia. Here we make the arm FCR as the example.
+ 
+```{r load data}
+load("../Data/TA174_FCR.RData")
+head(dat_FCR)
+```
+- `patid`: Patient ID
+- `treat`: Treatment arm 1 = FCR
+- `death`: Death status 0 = censored, 1 = dead
+- `death_t`: Survival time in months
+- `death_ty`: Survival time in years
+
+Before starting the analysis, we need to firstly source a R script that contains all functions required in the following components.   
+```{r source function, include=TRUE}
+source("../Scripts/Functions.R", local = knitr::knit_global())
+```
+
+##  Observed time period   {-}
+
+### Internal curve: piecewise exponential model  {-}
+
+To provide the best fit possible and a good level of flexibility, we will use a Cox semi-parametric model with piecewise constant hazard. The hazard is modeled as 
+$$ h(t) = \text{exp}(\lambda_{k}); \quad t\in (u_{k-1}, u_k], \quad k = 1, \ldots, K $$
+Hence the time axis is partitioned into $K$ intervals using $0<u_1<u_2<\ldots<u_K<\infty$ and variables $\mathbf{\lambda} = (\lambda_1, \ldots, \lambda_K)$ are assumed to a prior with random walks (RW) of order one (or two). 
+
+The `surv_est_inla` function creates internal survival curves ($S_{obs}$) based on the model fitted to the observed data using Bayesian INLA approach. Below, we set the time horizon from 0 to 180 months (15 years), during which intervals are constructed for every five months in the option `cutpoints`.   
+
+```{r observed estimate}
+obs_Surv <- surv_est_inla(data = dat_FCR, 
+                          cutpoints = seq(0,180, by =5))
+                          
+names(obs_Surv)
+```
+
+Two key components of `obs_Surv` object that will be used to plot survival curves:
+
+- `time`:  times used to create the survival curves.
+- `S_obs`: survival probabilities corresponding to elements of `time`
+
+Figure \@ref(fig:observedplot) shows that the model achieves a
+feasible fit to the observed data, but does not generate a credible extrapolation. It suggests over 50% survival at 15 years (end of the green curve), which is in stark contrast with
+expert estimates, suggesting instead that only 1.3% of the cohort would be likely to survive beyond that
+time. 
+
+
+```{r observedplot, echo=TRUE, fig.cap="Survival estimates of the FCR arm based on the piecewise exponential model fitted to the observed data"}
+ggplot() + 
+  geom_line(aes(obs_Surv$KM$time, obs_Surv$KM$surv, colour = "Kaplan-Meier"), size = 1.25, linetype = "dashed") +
+  geom_line(aes(obs_Surv$time, rowMeans(obs_Surv$S_obs), colour = "Data fitting"), size = 1) +
+  geom_ribbon(aes(x=obs_Surv$time, y = rowMeans(obs_Surv$S_obs), 
+                  ymin = apply(obs_Surv$S_obs, 1, quantile, probs = 0.025),
+                  ymax = apply(obs_Surv$S_obs, 1, quantile, probs = 0.975)), alpha = 0.1) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), 
+        text = element_text(size = 8)) +
+  xlab("Time (months)") + ylab("Survival") +
+  xlim(0, 180) + ylim(0,1) +
+  scale_colour_manual(name = "model", values = c("Data fitting"="#7CAE00", "Kaplan-Meier"="#990000"))
+```
+
+##  Unobserved time period   {-}
+
+### External curve: using expert judgement  {-}
+
+To produce a reasonable and realistic estimate for the long-term survival, we consider an external curve that is not informed by the observed data, but driven by the evidence from a different data source instead. Ideally, we can access matched long-term data from a relevant study, possibly of an observational nature, such as a registry or a cohort study, yet it is not always the case. Here we focus on a more general situation when only subjective knowledge is available, typically in the form of expert elicitation.    
+
+The `ext_surv_est` function creates external survival curves ($S_{ext}$) encoding external assumptions from expert opinion. In this motivating example, there is a strong opinion that approximately 1.3% of the cohort would be alive beyond 15 years, hence we identify the lifetime horizon as 15 years (180 months) [@roche2008rituximab]. Then if it is assumed that the survival probability at 12 years (`t_info = 144`) should be approximately 5% (`S_info = 0.05`) based on previous experience, we can use following code:
+
+```{r external estimate, message=FALSE, warning=FALSE, results='hide'}
+ext_Surv <- ext_surv_est(t_info = 144, S_info = 0.05, 
+                         T_max = 180, 
+                         times_est = seq(0, 180), distr = "gom")
+
+names(ext_Surv)
+```
+
+```{r external_object, echo=FALSE}
+names(ext_Surv)
+```
+
+## Blended estimate      {-}
+
+Given both internal and external curves over the whole time-horizon, we can compute the blended estimate based on a weight function $\pi(t; \alpha, \beta, a, b)$. 
+
+Here we set the blending interval $[48, 150]$ and $Beta(3, 3)$. The object `weight` contains the values of weight allocated to the external survival over the time.  
+```{r weight function}
+blending_interval <- list(min = 48, max = 150)
+beta_params <- list(alpha = 3, beta = 3)
+
+tp <- seq(0, 180)
+
+# parameters for the weight function
+wt_par <- list(a = blending_interval$min, b = blending_interval$max,
+               shape1 = beta_params$alpha, shape2 = beta_params$beta) 
+
+weight <- with(wt_par,
+               pbeta((tp - a)/(b - a), shape1, shape2))
+```
+
+The blended survival curve is simply obtained as
+$$S_{ble}(t) = S_{obs}(t)^{1-\pi(t; \alpha, \beta, a, b)}\times S_{ext}(t)^{\pi(t;\alpha, \beta, a, b)} $$
+```{r blended estimate}
+n_sim <- ncol(ext_Surv$S_ext)
+
+ble_Surv <- matrix(NA, nrow = 180 + 1, ncol = n_sim)
+
+for (i in seq_len(n_sim)) {
+  ble_Surv[, i] <-
+    obs_Surv$S_obs[, i]^(1 - weight) * ext_Surv$S_ext[, i]^weight
+}
+
+```
+
+Figure \@ref(fig:blendedplot) shows the blended survival estimate of the FCR arm driven by internal and external curve over the whole time-horizon. Below represents the result of one assumption about the blending operation, and different scenarios can be tested by changing the values of the parameters (`wt_par`) associated with the weight function.
+
+```{r blendedplot, echo=TRUE, fig.cap="Blended survival curve based on short-term data and external information for FCR arm"}
+ggplot() + 
+  geom_line(aes(obs_Surv$KM$time, obs_Surv$KM$surv, colour = "Kaplan-Meier"), size = 1.25, linetype = "dashed") +
+  geom_line(aes(tp, rowMeans(obs_Surv$S_obs), colour = "Data fitting"), 
+            size = 1, linetype = "twodash") +
+  geom_ribbon(aes(x=tp, y = rowMeans(obs_Surv$S_obs),
+                  ymin = apply(obs_Surv$S_obs, 1, quantile, probs = 0.025),
+                  ymax = apply(obs_Surv$S_obs, 1, quantile, probs = 0.975)), alpha = 0.1) +
+  geom_line(aes(tp, rowMeans(ext_Surv$S_ext), colour = "External info"), 
+            size = 1, linetype = "longdash") +
+  geom_ribbon(aes(x=tp, y = rowMeans(ext_Surv$S_ext), 
+                  ymin = apply(ext_Surv$S_ext, 1, quantile, probs = 0.025),
+                  ymax = apply(ext_Surv$S_ext, 1, quantile, probs = 0.975)), alpha = 0.1) +
+  geom_line(aes(tp, rowMeans(ble_Surv), colour = "Blended curve"), size = 1.25) +
+  geom_ribbon(aes(x=tp, y = rowMeans(ble_Surv), 
+                  ymin = apply(ble_Surv, 1, quantile, probs = 0.025),
+                  ymax = apply(ble_Surv, 1, quantile, probs = 0.975)), alpha = 0.1) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), 
+        text = element_text(size = 8)) +
+  xlab("Time (months)") + ylab("Survival") +
+  scale_colour_manual(name = "model", values = c("Data fitting"="#7CAE00", "External info"="#00BFC4", "Blended curve"="#F8766D", "Kaplan-Meier"="#990000"))
+```
+
+# References {-}
