@@ -10,6 +10,18 @@ The [example dataset](Data/TA174.csv) is based on the [CLL-8 trial](https://doi.
 
 In addition, the corresponding [`Rmd`](Scripts/case_study_blend.Rmd) file is used to manipulate and restructure the information to produce the modelling and all `R` code from the `markdown` document are extracted to the script [`CODE_case_study.R`](Scripts/CODE_case_study.R).   
 
+## Obtaining the files
+
+The folder contents can be downloaded as a `.zip` file of the repository.
+This can be done either by using the "Clone or download - Download ZIP" button in GitHub or from inside of the R environment using the following code.
+
+```r
+download.file(url = "https://github.com/StatisticsHealthEconomics/blendR-paper/archive/main.zip",
+              destfile = "blendR-paper.zip")
+
+# unzip the .zip file
+unzip(zipfile = "blendR-paper.zip")
+```
 
 ## 👂 Feedback
 
