@@ -1,6 +1,6 @@
-
+## ----install packages------------------------------------------------------------
 if (.Platform$OS.type == "windows") {
-  if("survHE" %in% rownames(installed.packages()) == FALSE) {
+  if ("survHE" %in% rownames(installed.packages()) == FALSE) {
     install.packages("survHE",
  	                   repos = c("http://www.statistica.it/gianluca/R",
  		                         "https://cran.rstudio.org",
@@ -10,7 +10,7 @@ if (.Platform$OS.type == "windows") {
 }
 
 if (.Platform$OS.type == "windows") {
-  if("survHE" %in% rownames(installed.packages()) == FALSE) {
+  if ("INLA" %in% rownames(installed.packages()) == FALSE) {
     install.packages("INLA",
                      repos = c(getOption("repos"),
                      INLA = "https://inla.r-inla-download.org/R/stable"),
