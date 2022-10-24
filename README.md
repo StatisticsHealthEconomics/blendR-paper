@@ -1,4 +1,4 @@
-# blendR
+# Blended Survival Curves: A new Approach to Extrapolation for Time-to-Event Outcomes from Clinical Trials in Health Technology Assessment
 
 [![arXiv](https://img.shields.io/badge/arXiv-2206.00154-f9f107.svg)](https://arxiv.org/abs/2206.00154)
 
