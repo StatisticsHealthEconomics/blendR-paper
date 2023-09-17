@@ -4,7 +4,7 @@
 
 This is the `GitHub` repository to host the `R` code used to run the example in the paper
 
-> Che, Zhaojing and Green, Nathan and Baio, Gianluca (2022) Blended Survival Curves: A new Approach to Extrapolation for Time-to-Event Outcomes from Clinical Trials in Health Technology Assessment, https://doi.org/10.48550/arxiv.2206.00154
+> Che, Z., Green, N., & Baio, G. (2023). Blended Survival Curves: A New Approach to Extrapolation for Time-to-Event Outcomes from Clinical Trials in Health Technology Assessment. Medical Decision Making, 43(3), 299-310. doi:10.1177/0272989X221134545
 
 The [example dataset](Data/TA174.csv) is based on the [CLL-8 trial](https://doi.org/10.1016/S0140-6736(10)61381-5) data, which were also used in [NICE technology appraisal TA174](https://www.nice.org.uk/guidance/ta174). A detailed report [`case_study_blend.html`](Scripts/case_study_blend.html) in the `Scripts` folder explains how to perform the blending analysis, step-by-step. 
 
